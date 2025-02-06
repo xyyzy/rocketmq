@@ -315,10 +315,12 @@ public class MappedFile extends ReferenceResource {
     }
 
     public int commit(final int commitLeastPages) {
+        // 如果writeBuffer为空，表示没有数据需要提交，直接返回wrotePosition
         if (writeBuffer == null) {
             //no need to commit data to file channel, so just regard wrotePosition as committedPosition.
             return this.wrotePosition.get();
         }
+        // 如果可以提交数据
         if (this.isAbleToCommit(commitLeastPages)) {
             if (this.hold()) {
                 commit0();
@@ -338,16 +340,24 @@ public class MappedFile extends ReferenceResource {
     }
 
     protected void commit0() {
+        // 获取已写入位置       
         int writePos = this.wrotePosition.get();
+        // 获取上次提交位置
         int lastCommittedPosition = this.committedPosition.get();
-
+        // 如果已写入位置大于上次提交位置，表示有数据需要提交
         if (writePos - lastCommittedPosition > 0) {
             try {
+                // 获取写缓冲区
                 ByteBuffer byteBuffer = writeBuffer.slice();
+                // 设置写缓冲区位置
                 byteBuffer.position(lastCommittedPosition);
+                // 设置写缓冲区限制
                 byteBuffer.limit(writePos);
+                // 设置文件通道位置
                 this.fileChannel.position(lastCommittedPosition);
+                // 写入数据
                 this.fileChannel.write(byteBuffer);
+                // 设置提交位置
                 this.committedPosition.set(writePos);
             } catch (Throwable e) {
                 log.error("Error occurred when commit data to FileChannel.", e);
@@ -371,17 +381,20 @@ public class MappedFile extends ReferenceResource {
     }
 
     protected boolean isAbleToCommit(final int commitLeastPages) {
+         // 获取提交数据的位置偏移量
         int flush = this.committedPosition.get();
+            // 获取已写入位置
         int write = this.wrotePosition.get();
-
+        // 如果文件已满，直接返回true
         if (this.isFull()) {
             return true;
         }
-
+        // 如果提交数据的最少页数大于0，表示需要提交数据
         if (commitLeastPages > 0) {
+            // 如果已写入位置减去提交位置大于等于提交数据的最少页数，表示可以提交数据
             return ((write / OS_PAGE_SIZE) - (flush / OS_PAGE_SIZE)) >= commitLeastPages;
         }
-
+        // 如果已写入位置大于提交位置，表示可以提交数据
         return write > flush;
     }
 

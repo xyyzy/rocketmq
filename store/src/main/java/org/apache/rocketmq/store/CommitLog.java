@@ -1027,6 +1027,7 @@ public class CommitLog {
                     CommitLog.this.defaultMessageStore.getMessageStoreConfig().getCommitCommitLogThoroughInterval();
 
                 long begin = System.currentTimeMillis();
+                //如果当前时间大于上次提交时间+两次提交的最大间隔时间，意味着已经有比较长的一段时间没有进行提交了，需要尽快刷盘，此时将每次提交的最少页数设置为0不限制提交页数
                 if (begin >= (this.lastCommitTimestamp + commitDataThoroughInterval)) {
                     this.lastCommitTimestamp = begin;
                     commitDataLeastPages = 0;
@@ -1035,9 +1036,11 @@ public class CommitLog {
                 try {
                     boolean result = CommitLog.this.mappedFileQueue.commit(commitDataLeastPages);
                     long end = System.currentTimeMillis();
+                    // 返回false 表示有数据提交 需要刷盘 这个设计比较反直觉
                     if (!result) {
                         this.lastCommitTimestamp = end; // result = false means some data committed.
                         //now wake up flush thread.
+                        //如果还有数据需要提交，唤醒刷盘线程
                         flushCommitLogService.wakeup();
                     }
 
@@ -1051,6 +1054,7 @@ public class CommitLog {
             }
 
             boolean result = false;
+            // 最多重试RETRY_TIMES_OVER次，确保数据都提交成功
             for (int i = 0; i < RETRY_TIMES_OVER && !result; i++) {
                 result = CommitLog.this.mappedFileQueue.commit(0);
                 CommitLog.log.info(this.getServiceName() + " service shutdown, retry " + (i + 1) + " times " + (result ? "OK" : "Not OK"));
@@ -1204,7 +1208,9 @@ public class CommitLog {
                     // two times the flush
                     boolean flushOK = CommitLog.this.mappedFileQueue.getFlushedWhere() >= req.getNextOffset();
                     for (int i = 0; i < 2 && !flushOK; i++) {
+                        // 零拷贝 刷盘
                         CommitLog.this.mappedFileQueue.flush(0);
+                        // 由于CommitLog大小为1G，所以本次刷完之后，如果当前已经刷入的偏移量小于请求设定的位置，表示数据未刷完，需要继续刷，反之表示数据已经刷完，flushOK为true，for循环条件不满足结束执行
                         flushOK = CommitLog.this.mappedFileQueue.getFlushedWhere() >= req.getNextOffset();
                     }
 
@@ -1216,6 +1222,7 @@ public class CommitLog {
                     CommitLog.this.defaultMessageStore.getStoreCheckpoint().setPhysicMsgTimestamp(storeTimestamp);
                 }
 
+                // 清空请求队列 
                 this.requestsRead = new LinkedList<>();
             } else {
                 // Because of individual messages is set to not sync flush, it
