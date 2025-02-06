@@ -297,11 +297,14 @@ public class MappedFile extends ReferenceResource {
                 int value = getReadPosition();
 
                 try {
-                    // 如果写缓冲区不为空或者文件通道位置不为0，表示需要刷盘
+                     // 场景1：使用暂存池的情况
+                    // writeBuffer != null：表示有暂存池的数据
+                    // fileChannel.position() != 0：表示文件通道有数据待写入
                     if (writeBuffer != null || this.fileChannel.position() != 0) {
                         this.fileChannel.force(false);
                     } else {
-                        // 刷盘
+                        // 场景2：未使用暂存池的情况
+                        // 直接使用 MappedByteBuffer 刷盘
                         this.mappedByteBuffer.force();
                     }
                 } catch (Throwable e) {
