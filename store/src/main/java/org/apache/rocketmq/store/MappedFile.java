@@ -289,22 +289,27 @@ public class MappedFile extends ReferenceResource {
      * @return The current flushed position
      */
     public int flush(final int flushLeastPages) {
+        // 如果可以刷盘  
         if (this.isAbleToFlush(flushLeastPages)) {
+            // 如果可以hold 引用计数，防止文件在使用的时候被删除 保证线程安全
             if (this.hold()) {
+                // 获取已写入位置
                 int value = getReadPosition();
 
                 try {
-                    //We only append data to fileChannel or mappedByteBuffer, never both.
+                    // 如果写缓冲区不为空或者文件通道位置不为0，表示需要刷盘
                     if (writeBuffer != null || this.fileChannel.position() != 0) {
                         this.fileChannel.force(false);
                     } else {
+                        // 刷盘
                         this.mappedByteBuffer.force();
                     }
                 } catch (Throwable e) {
                     log.error("Error occurred when force data to disk.", e);
                 }
-
+                // 设置刷盘位置
                 this.flushedPosition.set(value);
+                // 释放hold
                 this.release();
             } else {
                 log.warn("in flush, hold failed, flush offset = " + this.flushedPosition.get());
@@ -366,9 +371,11 @@ public class MappedFile extends ReferenceResource {
     }
 
     private boolean isAbleToFlush(final int flushLeastPages) {
+        // 获取当前刷盘位置
         int flush = this.flushedPosition.get();
+        // 获取已写入位置
         int write = getReadPosition();
-
+        // 如果文件已满，直接返回true
         if (this.isFull()) {
             return true;
         }
